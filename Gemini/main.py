@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from google import genai
+from google.genai import types
 from pymongo import MongoClient
 from datetime import datetime
 import json
@@ -12,8 +13,8 @@ import uuid
 # ─── App Setup ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Tourist Speech Translation API",
-    description="Translates tourist speech (any language) to English and stores in MongoDB",
-    version="1.0.0"
+    description="Translates tourist audio/text (any language) to English and stores in MongoDB",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -36,25 +37,27 @@ translations_collection = db["translations"]
 
 # ─── Models ───────────────────────────────────────────────────────────────────
 class SpeechInput(BaseModel):
-    text: str                                   # Raw speech/text from tourist (any language)
+    text: str
     tourist_name: Optional[str] = "Anonymous"
     tourist_nationality: Optional[str] = None
     location: Optional[str] = None
 
 class TranslationResponse(BaseModel):
     id: str
+    input_type: str
     original_text: str
     translated_text: str
     detected_language: str
+    summary: Optional[str] = None
+    criticalness: Optional[str] = None
     tourist_name: str
     tourist_nationality: Optional[str]
     location: Optional[str]
     timestamp: str
     saved_to_db: bool
 
-# ─── Gemini Helper ────────────────────────────────────────────────────────────
+# ─── Gemini: Text Translation ─────────────────────────────────────────────────
 def translate_with_gemini(text: str) -> dict:
-    """Detect language and translate to English using Gemini."""
     prompt = f"""
 Detect the language of the following text and translate it to English.
 Respond ONLY with a valid JSON object — no markdown, no backticks, no explanation.
@@ -62,7 +65,9 @@ Respond ONLY with a valid JSON object — no markdown, no backticks, no explanat
 {{
   "detected_language": "<language name, e.g. French, Nepali, Hindi, Spanish>",
   "translated_text": "<accurate English translation of the input text>",
-  "confidence": "<high | medium | low>"
+  "confidence": "<high | medium | low>",
+  "summary": "<1-2 sentence summary of the main point being communicated>",
+  "criticalness": "<high | medium | low — high if urgent/dangerous, medium if complaint, low if general feedback>"
 }}
 
 Text to translate:
@@ -76,17 +81,60 @@ Text to translate:
     return json.loads(raw)
 
 
+# ─── Gemini: Audio Transcription + Translation ────────────────────────────────
+def transcribe_and_translate_audio(audio_bytes: bytes, mime_type: str) -> dict:
+    prompt = """
+Listen to this audio carefully.
+1. Transcribe exactly what is being said (in the original language).
+2. Detect the language.
+3. Translate the speech to English.
+4. Summarize the main point in 1-2 sentences.
+5. Assess criticalness.
+
+Respond ONLY with a valid JSON object — no markdown, no backticks, no explanation:
+
+{
+  "original_transcript": "<exact words spoken in the original language>",
+  "detected_language": "<language name>",
+  "translated_text": "<accurate English translation>",
+  "confidence": "<high | medium | low>",
+  "summary": "<1-2 sentence summary of the main point being communicated>",
+  "criticalness": "<high | medium | low — high if urgent/dangerous, medium if complaint, low if general feedback>"
+}
+"""
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+            prompt
+        ]
+    )
+    raw = response.text.strip().replace("```json", "").replace("```", "").strip()
+    return json.loads(raw)
+
+
+# ─── Save to MongoDB ──────────────────────────────────────────────────────────
+def save_to_mongo(doc: dict) -> bool:
+    try:
+        translations_collection.insert_one(doc)
+        return True
+    except Exception as e:
+        print(f"[MongoDB Error] {e}")
+        return False
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.get("/")
 def root():
     return {
-        "message": "Tourist Speech Translation API",
+        "message": "Tourist Speech Translation API v2",
         "endpoints": {
-            "POST /translate": "Translate tourist speech to English and save to MongoDB",
-            "GET /translations": "Retrieve all saved translations",
-            "GET /translations/{id}": "Get a single translation by ID",
-            "GET /health": "Health check"
+            "POST /translate/text":    "Submit text in any language → English → MongoDB",
+            "POST /translate/audio":   "Upload audio file → transcribe → English → MongoDB",
+            "GET  /translations":      "List all saved translations",
+            "GET  /translations/{id}": "Get one translation by ID",
+            "GET  /health":            "Health check"
         }
     }
 
@@ -98,58 +146,48 @@ def health_check():
         db_status = "connected"
     except Exception:
         db_status = "disconnected"
-    return {
-        "status": "healthy",
-        "mongodb": db_status,
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return {"status": "healthy", "mongodb": db_status, "timestamp": datetime.utcnow().isoformat()}
 
 
-@app.post("/translate", response_model=TranslationResponse)
-def translate_speech(request: SpeechInput):
-    """
-    Accepts tourist speech in any language.
-    Translates it to English using Gemini and saves the result to MongoDB.
-    """
+# ── 1. Text Input ─────────────────────────────────────────────────────────────
+@app.post("/translate/text", response_model=TranslationResponse)
+def translate_text(request: SpeechInput):
+    """Submit text in any language. Translates to English and saves to MongoDB."""
     if not request.text.strip():
-        raise HTTPException(status_code=400, detail="Input text cannot be empty.")
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
 
-    # Translate via Gemini
     try:
         result = translate_with_gemini(request.text)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Gemini response could not be parsed. Please try again.")
+        raise HTTPException(status_code=500, detail="Gemini response could not be parsed.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
-    # Build the document to store
     record_id = str(uuid.uuid4())
     doc = {
         "_id": record_id,
+        "input_type": "text",
         "original_text": request.text,
         "translated_text": result.get("translated_text", ""),
         "detected_language": result.get("detected_language", "Unknown"),
         "confidence": result.get("confidence", "medium"),
+        "summary": result.get("summary", ""),
+        "criticalness": result.get("criticalness", "medium"),
         "tourist_name": request.tourist_name,
         "tourist_nationality": request.tourist_nationality,
         "location": request.location,
         "timestamp": datetime.utcnow().isoformat()
     }
-
-    # Save to MongoDB
-    saved = False
-    try:
-        translations_collection.insert_one(doc)
-        saved = True
-    except Exception as e:
-        # Don't crash the API if MongoDB fails — just flag it
-        print(f"[MongoDB Error] {e}")
+    saved = save_to_mongo(doc)
 
     return TranslationResponse(
         id=record_id,
-        original_text=request.text,
+        input_type="text",
+        original_text=doc["original_text"],
         translated_text=doc["translated_text"],
         detected_language=doc["detected_language"],
+        summary=doc["summary"],
+        criticalness=doc["criticalness"],
         tourist_name=request.tourist_name,
         tourist_nationality=request.tourist_nationality,
         location=request.location,
@@ -158,25 +196,112 @@ def translate_speech(request: SpeechInput):
     )
 
 
+# ── 2. Audio Input ────────────────────────────────────────────────────────────
+@app.post("/translate/audio", response_model=TranslationResponse)
+async def translate_audio(
+    audio: UploadFile = File(..., description="Audio file: mp3, wav, ogg, m4a, webm"),
+    tourist_name: Optional[str] = Form("Anonymous"),
+    tourist_nationality: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+):
+    """
+    Upload an audio file (mp3/wav/ogg/m4a/webm).
+    Gemini will transcribe the speech, detect the language, translate to English,
+    generate a summary, assess criticalness, and save to MongoDB.
+    """
+    SUPPORTED = {
+        "audio/mpeg": "audio/mpeg",
+        "audio/mp3":  "audio/mpeg",
+        "audio/wav":  "audio/wav",
+        "audio/ogg":  "audio/ogg",
+        "audio/m4a":  "audio/mp4",
+        "audio/mp4":  "audio/mp4",
+        "audio/webm": "audio/webm",
+    }
+
+    content_type = audio.content_type or ""
+    if content_type not in SUPPORTED:
+        ext = (audio.filename or "").split(".")[-1].lower()
+        ext_map = {
+            "mp3": "audio/mpeg", "wav": "audio/wav",
+            "ogg": "audio/ogg",  "m4a": "audio/mp4",
+            "mp4": "audio/mp4",  "webm": "audio/webm"
+        }
+        content_type = ext_map.get(ext, "")
+
+    if not content_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported audio format. Use mp3, wav, ogg, m4a, or webm."
+        )
+
+    mime_type = SUPPORTED.get(content_type, content_type)
+    audio_bytes = await audio.read()
+
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Audio file is empty.")
+
+    try:
+        result = transcribe_and_translate_audio(audio_bytes, mime_type)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Gemini could not parse the audio response.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio processing failed: {str(e)}")
+
+    record_id = str(uuid.uuid4())
+    doc = {
+        "_id": record_id,
+        "input_type": "audio",
+        "original_text": result.get("original_transcript", ""),
+        "translated_text": result.get("translated_text", ""),
+        "detected_language": result.get("detected_language", "Unknown"),
+        "confidence": result.get("confidence", "medium"),
+        "summary": result.get("summary", ""),
+        "criticalness": result.get("criticalness", "medium"),
+        "audio_filename": audio.filename,
+        "tourist_name": tourist_name,
+        "tourist_nationality": tourist_nationality,
+        "location": location,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    saved = save_to_mongo(doc)
+
+    return TranslationResponse(
+        id=record_id,
+        input_type="audio",
+        original_text=doc["original_text"],
+        translated_text=doc["translated_text"],
+        detected_language=doc["detected_language"],
+        summary=doc["summary"],
+        criticalness=doc["criticalness"],
+        tourist_name=tourist_name,
+        tourist_nationality=tourist_nationality,
+        location=location,
+        timestamp=doc["timestamp"],
+        saved_to_db=saved
+    )
+
+
+# ── 3. Fetch All Translations ─────────────────────────────────────────────────
 @app.get("/translations")
 def get_all_translations(limit: int = 50):
-    """Retrieve the most recent translations stored in MongoDB."""
     docs = list(
         translations_collection.find(
             {},
-            {"_id": 1, "original_text": 1, "translated_text": 1,
-             "detected_language": 1, "tourist_name": 1, "timestamp": 1}
+            {"_id": 1, "input_type": 1, "original_text": 1,
+             "translated_text": 1, "detected_language": 1,
+             "summary": 1, "criticalness": 1,
+             "tourist_name": 1, "timestamp": 1}
         ).sort("timestamp", -1).limit(limit)
     )
-    # Rename _id to id for cleaner JSON output
     for doc in docs:
         doc["id"] = doc.pop("_id")
     return {"total": len(docs), "translations": docs}
 
 
+# ── 4. Fetch Single Translation ───────────────────────────────────────────────
 @app.get("/translations/{record_id}")
 def get_translation(record_id: str):
-    """Fetch a single translation record by its ID."""
     doc = translations_collection.find_one({"_id": record_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Translation record not found.")
