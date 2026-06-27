@@ -671,6 +671,29 @@ tbody td { padding: 0.9rem 1rem; font-size: 0.875rem; color: var(--ink); vertica
   flex-wrap: wrap;
   gap: 0.75rem;
 }
+.location-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1.5px solid #D1D8E0;
+  border-radius: var(--radius-sm);
+  background: #FAFBFC;
+  padding: 0.65rem 0.75rem;
+  min-height: 44px;
+  color: #4A5568;
+  font-size: 0.86rem;
+}
+.location-panel.ready {
+  border-color: rgba(39,174,96,.35);
+  background: #F0FDF4;
+  color: #166534;
+}
+.location-panel.error {
+  border-color: #FECACA;
+  background: #FEF2F2;
+  color: #B91C1C;
+}
 .audio-preview {
   width: 100%;
   min-height: 42px;

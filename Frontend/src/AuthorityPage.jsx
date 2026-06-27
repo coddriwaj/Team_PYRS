@@ -218,7 +218,7 @@ function AuthorityPage() {
             <div className="dash-stat-icon total"><IconList /></div>
             <div className="dash-stat-body">
               <strong>{complaints.length}</strong>
-              <small>Total Gemini Complaints</small>
+              <small>Total Complaints</small>
             </div>
           </div>
           <div className="dash-stat">
@@ -243,7 +243,7 @@ function AuthorityPage() {
           <div className="card table-card">
             <div className="section-label" style={{ marginBottom: '1.25rem' }}>
               <p className="eyebrow">Recent Complaints</p>
-              <h3>Latest Gemini results requiring attention</h3>
+              <h3>Latest results requiring attention</h3>
             </div>
 
             <div className="filter-bar">

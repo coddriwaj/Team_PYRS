@@ -15,10 +15,14 @@ function PublicPage() {
   const [audioUrl, setAudioUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [submissionMode, setSubmissionMode] = useState('audio');
+  const [locationInfo, setLocationInfo] = useState({
+    status: 'pending',
+    value: '',
+    display: 'Detecting location...',
+  });
   const [formData, setFormData] = useState({
     complaintText: '',
     touristNationality: '',
-    location: '',
   });
 
   useEffect(() => {
@@ -42,6 +46,52 @@ function PublicPage() {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     streamRef.current?.getTracks().forEach((track) => track.stop());
   }, [audioUrl]);
+
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationInfo({
+        status: 'error',
+        value: '',
+        display: 'Location tracking is not supported by this browser.',
+      });
+      return;
+    }
+
+    setLocationInfo({
+      status: 'pending',
+      value: '',
+      display: 'Detecting location...',
+    });
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        const fixedLat = latitude.toFixed(6);
+        const fixedLng = longitude.toFixed(6);
+        setLocationInfo({
+          status: 'ready',
+          value: `${fixedLat}, ${fixedLng}`,
+          display: `${fixedLat}, ${fixedLng} (${Math.round(accuracy)}m accuracy)`,
+        });
+      },
+      (geoError) => {
+        setLocationInfo({
+          status: 'error',
+          value: '',
+          display: geoError.message || 'Location permission was denied.',
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      }
+    );
+  };
+
+  useEffect(() => {
+    detectLocation();
+  }, []);
 
   const handleLogout = () => {
     sessionStorage.removeItem('user');
@@ -128,7 +178,7 @@ function PublicPage() {
         mimeType: audioBlob.type || 'audio/webm',
         touristName: user?.name || 'Anonymous',
         touristNationality: formData.touristNationality,
-        location: formData.location,
+        location: locationInfo.value,
       }),
     });
     const data = await res.json();
@@ -145,7 +195,7 @@ function PublicPage() {
         text: formData.complaintText,
         touristName: user?.name || 'Anonymous',
         touristNationality: formData.touristNationality,
-        location: formData.location,
+        location: locationInfo.value,
       }),
     });
     const data = await res.json();
@@ -291,16 +341,13 @@ function PublicPage() {
               </div>
 
               <div className="field">
-                <label htmlFor="location">Location</label>
-                <input
-                  id="location"
-                  type="text"
-                  name="location"
-                  placeholder="Where did this happen?"
-                  value={formData.location}
-                  onChange={handleChange}
-                  disabled={processing}
-                />
+                <label>Location</label>
+                <div className={`location-panel ${locationInfo.status}`}>
+                  <span>{locationInfo.display}</span>
+                  <button type="button" className="action-btn" onClick={detectLocation} disabled={processing}>
+                    Retry
+                  </button>
+                </div>
               </div>
 
               <button
