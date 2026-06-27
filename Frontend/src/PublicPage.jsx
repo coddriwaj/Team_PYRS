@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import GoogleComplaintMap from './GoogleComplaintMap';
 
 function PublicPage() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ function PublicPage() {
     status: 'pending',
     value: '',
     display: 'Detecting location...',
+    position: null,
   });
   const [formData, setFormData] = useState({
     complaintText: '',
@@ -53,6 +55,7 @@ function PublicPage() {
         status: 'error',
         value: '',
         display: 'Location tracking is not supported by this browser.',
+        position: null,
       });
       return;
     }
@@ -61,6 +64,7 @@ function PublicPage() {
       status: 'pending',
       value: '',
       display: 'Detecting location...',
+      position: null,
     });
 
     navigator.geolocation.getCurrentPosition(
@@ -72,6 +76,7 @@ function PublicPage() {
           status: 'ready',
           value: `${fixedLat}, ${fixedLng}`,
           display: `${fixedLat}, ${fixedLng} (${Math.round(accuracy)}m accuracy)`,
+          position: { lat: latitude, lng: longitude },
         });
       },
       (geoError) => {
@@ -79,6 +84,7 @@ function PublicPage() {
           status: 'error',
           value: '',
           display: geoError.message || 'Location permission was denied.',
+          position: null,
         });
       },
       {
@@ -350,13 +356,26 @@ function PublicPage() {
                 </div>
               </div>
 
+              <div className="mini-map-card">
+                <GoogleComplaintMap
+                  markers={locationInfo.position ? [{
+                    id: 'current-location',
+                    title: 'Your current location',
+                    category: 'Complaint origin',
+                    criticalness: 'medium',
+                    position: locationInfo.position,
+                  }] : []}
+                  emptyMessage="Allow location permission to preview your complaint location."
+                />
+              </div>
+
               <button
                 type="submit"
                 className="btn-primary"
                 style={{ alignSelf: 'flex-start' }}
                 disabled={recording || processing || (submissionMode === 'audio' ? !audioBlob : !formData.complaintText.trim())}
               >
-                {processing ? 'Processing with Gemini...' : submissionMode === 'audio' ? 'Transcribe and Classify' : 'Classify Text Complaint'}
+                {processing ? 'Processing with Gemini...' : submissionMode === 'audio' ? 'Submit' : 'Submitting...'}
               </button>
             </form>
 

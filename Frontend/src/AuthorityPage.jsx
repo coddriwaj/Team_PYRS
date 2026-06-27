@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import GoogleComplaintMap from './GoogleComplaintMap';
 
 const IconList = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -59,6 +60,15 @@ function formatDate(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function parseLocation(location) {
+  if (!location) return null;
+  const [latText, lngText] = String(location).split(',').map((part) => part.trim());
+  const lat = Number(latText);
+  const lng = Number(lngText);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
 }
 
 function AuthorityPage() {
@@ -185,6 +195,38 @@ function AuthorityPage() {
 
   const highPriorityCount = complaints.filter((complaint) => complaint.criticalness === 'high').length;
   const resolvedCount = complaints.filter((complaint) => complaint.status === 'resolved').length;
+  const problemRepetition = useMemo(() => {
+    const counts = filteredComplaints.reduce((acc, complaint) => {
+      const category = complaint.category || 'Other';
+      if (!acc[category]) {
+        acc[category] = {
+          category,
+          total: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+        };
+      }
+
+      const priority = priorityClass(complaint.criticalness);
+      acc[category].total += 1;
+      acc[category][priority] += 1;
+      return acc;
+    }, {});
+
+    return Object.values(counts).sort((a, b) => b.total - a.total || a.category.localeCompare(b.category));
+  }, [filteredComplaints]);
+  const topProblem = problemRepetition[0];
+  const mapMarkers = useMemo(() => filteredComplaints
+    .map((complaint) => ({
+      id: complaint.id,
+      title: complaint.summary || complaint.category || 'Complaint',
+      category: complaint.category,
+      criticalness: priorityClass(complaint.criticalness),
+      position: parseLocation(complaint.location),
+      raw: complaint,
+    }))
+    .filter((marker) => marker.position), [filteredComplaints]);
 
   return (
     <div className="page-shell">
@@ -238,6 +280,70 @@ function AuthorityPage() {
         </div>
 
         {error && <div className="alert alert-error" role="alert">{error}</div>}
+
+        <div className="card repetition-card">
+          <div className="section-label" style={{ marginBottom: '1rem' }}>
+            <p className="eyebrow">Problem Repetition</p>
+            <h3>Most repeated complaint types</h3>
+          </div>
+          <div className="repetition-summary">
+            <div>
+              <strong>{topProblem?.category || 'No data'}</strong>
+              <span>Most repeated type</span>
+            </div>
+            <div>
+              <strong>{topProblem?.total || 0}</strong>
+              <span>Reports in current filter</span>
+            </div>
+          </div>
+          {problemRepetition.length === 0 ? (
+            <div className="empty-chart">
+              <p>No complaint categories available for the selected filters.</p>
+            </div>
+          ) : (
+            <div className="repetition-list">
+              {problemRepetition.map((item) => {
+                const percentage = filteredComplaints.length
+                  ? Math.round((item.total / filteredComplaints.length) * 100)
+                  : 0;
+
+                return (
+                  <div className="repetition-row" key={item.category}>
+                    <div className="repetition-row-head">
+                      <span>{item.category}</span>
+                      <strong>{item.total}</strong>
+                    </div>
+                    <div className="repetition-track" aria-label={`${item.category}: ${item.total} reports`}>
+                      <div className="repetition-fill" style={{ width: `${Math.max(percentage, 4)}%` }} />
+                    </div>
+                    <div className="repetition-meta">
+                      <span>{percentage}% of visible reports</span>
+                      <span>{item.high} high / {item.medium} medium / {item.low} low</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card map-card">
+          <div className="section-label" style={{ marginBottom: '1rem' }}>
+            <p className="eyebrow">Complaint Map</p>
+            <h3>Reports by location and criticalness</h3>
+          </div>
+          <div className="map-legend">
+            <span><i className="legend-dot high" />High</span>
+            <span><i className="legend-dot medium" />Medium</span>
+            <span><i className="legend-dot low" />Low</span>
+          </div>
+          <GoogleComplaintMap
+            markers={mapMarkers}
+            selectedId={selectedComplaint?.id}
+            onMarkerClick={setSelectedComplaint}
+            emptyMessage="No filtered complaints have valid location coordinates."
+          />
+        </div>
 
         <div className="authority-grid">
           <div className="card table-card">
