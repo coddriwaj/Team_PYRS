@@ -25,6 +25,34 @@ const readGeminiText = (payload) =>
     .join("")
     .trim();
 
+const toComplaintDto = (record) => ({
+  id: record._id,
+  originalTranscript: record.originalTranscript,
+  translatedText: record.translatedText,
+  detectedLanguage: record.detectedLanguage,
+  confidence: record.confidence,
+  summary: record.summary,
+  criticalness: record.criticalness,
+  category: record.category,
+  touristName: record.touristName,
+  touristNationality: record.touristNationality,
+  location: record.location,
+  createdAt: record.createdAt,
+});
+
+router.get("/complaints", async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+  const records = await Translation.find({})
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+
+  return res.json({
+    total: records.length,
+    complaints: records.map(toComplaintDto),
+  });
+});
+
 router.post("/transcribe-classify", async (req, res) => {
   const {
     audioBase64,
@@ -125,18 +153,8 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
     });
 
     return res.status(201).json({
-      id: record._id,
-      originalTranscript: record.originalTranscript,
-      translatedText: record.translatedText,
-      detectedLanguage: record.detectedLanguage,
-      confidence: record.confidence,
-      summary: record.summary,
-      criticalness: record.criticalness,
-      category: record.category,
-      touristName: record.touristName,
-      touristNationality: record.touristNationality,
-      location: record.location,
-      createdAt: record.createdAt,
+      message: "Complaint submitted successfully.",
+      complaint: toComplaintDto(record),
     });
   } catch (error) {
     return res.status(500).json({

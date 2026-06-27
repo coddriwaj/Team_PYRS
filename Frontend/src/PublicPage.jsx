@@ -14,7 +14,6 @@ function PublicPage() {
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState(null);
   const [formData, setFormData] = useState({
     touristNationality: '',
     location: '',
@@ -56,7 +55,6 @@ function PublicPage() {
   const startRecording = async () => {
     setError('');
     setMessage('');
-    setResult(null);
 
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       setError('Audio recording is not supported in this browser.');
@@ -114,7 +112,6 @@ function PublicPage() {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl('');
-    setResult(null);
     setMessage('');
     setError('');
   };
@@ -145,8 +142,8 @@ function PublicPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Gemini processing failed.');
-      setResult(data);
-      setMessage('Audio complaint processed and submitted successfully.');
+      resetRecording();
+      setMessage(data.message || 'Audio complaint processed and submitted successfully.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -181,7 +178,7 @@ function PublicPage() {
           <p>Speak in any language. Gemini will transcribe, translate, summarize, and classify the complaint.</p>
         </div>
 
-        <div className="public-grid">
+        <div className="public-grid public-grid-single">
           <div className="card">
             <div className="section-label">
               <p className="eyebrow">Recorder</p>
@@ -250,38 +247,6 @@ function PublicPage() {
             {message && <p className="success-note">{message}</p>}
           </div>
 
-          <div className="card result-card">
-            <div className="section-label">
-              <p className="eyebrow">Gemini Result</p>
-              <h3>Transcript and classification</h3>
-            </div>
-
-            {!result ? (
-              <div className="empty-result">
-                <p>Your Gemini transcript, English translation, summary, and complaint category will appear here after processing.</p>
-              </div>
-            ) : (
-              <div className="result-stack">
-                <div className="result-meta">
-                  <span className={`badge ${result.criticalness}`}>{result.criticalness} priority</span>
-                  <span className="result-pill">{result.category}</span>
-                  <span className="result-pill">{result.detectedLanguage}</span>
-                </div>
-                <div>
-                  <h4>Original transcript</h4>
-                  <p>{result.originalTranscript || 'No transcript returned.'}</p>
-                </div>
-                <div>
-                  <h4>English translation</h4>
-                  <p>{result.translatedText || 'No translation returned.'}</p>
-                </div>
-                <div>
-                  <h4>Summary</h4>
-                  <p>{result.summary || 'No summary returned.'}</p>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </main>
     </div>

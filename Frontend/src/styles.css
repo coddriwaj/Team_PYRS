@@ -564,6 +564,15 @@ tbody td { padding: 0.9rem 1rem; font-size: 0.875rem; color: var(--ink); vertica
   gap: 1.25rem;
   align-items: start;
 }
+.public-grid-single {
+  grid-template-columns: minmax(0, 720px);
+}
+.authority-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 1.25rem;
+  align-items: start;
+}
 .recorder-panel {
   border: 1.5px dashed #C8D0DA;
   border-radius: var(--radius);
@@ -646,6 +655,11 @@ tbody td { padding: 0.9rem 1rem; font-size: 0.875rem; color: var(--ink); vertica
   background: #EEF2F6;
   color: #4A5568;
 }
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
 .badge.high { background: #FEF2F2; color: #B91C1C; }
 .badge.medium { background: #FFF8E1; color: #B45309; }
 .badge.low { background: #F0FDF4; color: #15803D; }
@@ -671,6 +685,7 @@ tbody td { padding: 0.9rem 1rem; font-size: 0.875rem; color: var(--ink); vertica
   .stats-row    { grid-template-columns: 1fr; }
   .dash-stats   { grid-template-columns: 1fr; }
   .public-grid  { grid-template-columns: 1fr; }
+  .authority-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
   .topbar { flex-wrap: wrap; padding: 0.75rem 1rem; min-height: unset; gap: 0.75rem; }
