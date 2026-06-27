@@ -37,6 +37,22 @@ const translationSchema = new mongoose.Schema(
       type: String,
       default: "Other",
     },
+    concernedAuthority: {
+      type: String,
+      default: "Tourism Complaint Cell",
+    },
+    concernedAuthorityEmail: {
+      type: String,
+      default: "",
+    },
+    notificationEmailSent: {
+      type: Boolean,
+      default: false,
+    },
+    notificationEmailError: {
+      type: String,
+      default: "",
+    },
     touristName: {
       type: String,
       default: "Anonymous",

@@ -1,4 +1,5 @@
 import express from "express";
+import nodemailer from "nodemailer";
 import Translation from "../models/Translation.js";
 
 const router = express.Router();
@@ -35,6 +36,10 @@ const toComplaintDto = (record) => ({
   summary: record.summary,
   criticalness: record.criticalness,
   category: record.category,
+  concernedAuthority: record.concernedAuthority,
+  concernedAuthorityEmail: record.concernedAuthorityEmail,
+  notificationEmailSent: record.notificationEmailSent,
+  notificationEmailError: record.notificationEmailError,
   touristName: record.touristName,
   touristNationality: record.touristNationality,
   location: record.location,
@@ -44,6 +49,177 @@ const toComplaintDto = (record) => ({
 
 const STATUS_VALUES = ["not_resolved", "in_process", "resolved"];
 const CATEGORY_OPTIONS = "Road Problems | Hotel / Accommodation | Transport | Tour Guide | Pricing / Overcharging | Safety | Cleanliness | Harassment | Health / Medical | Lost Item | Other";
+const AUTHORITY_OPTIONS = "Roads / Infrastructure Department | Tourist Police | Tourism Safety Unit | Transport Management Office | Hotel Standards Authority | Consumer Protection / Pricing Cell | Guide Licensing Board | Municipal Sanitation Office | Health Emergency Desk | Lost and Found Desk | Tourism Complaint Cell";
+
+const AUTHORITY_BY_CATEGORY = {
+  "road problems": "Roads / Infrastructure Department",
+  "hotel / accommodation": "Hotel Standards Authority",
+  transport: "Transport Management Office",
+  "tour guide": "Guide Licensing Board",
+  "pricing / overcharging": "Consumer Protection / Pricing Cell",
+  safety: "Tourism Safety Unit",
+  cleanliness: "Municipal Sanitation Office",
+  harassment: "Tourist Police",
+  "health / medical": "Health Emergency Desk",
+  "lost item": "Lost and Found Desk",
+  other: "Tourism Complaint Cell",
+};
+
+const AUTHORITY_EMAIL_ENV_BY_AUTHORITY = {
+  "Roads / Infrastructure Department": "AUTHORITY_ROADS_EMAIL",
+  "Tourist Police": "AUTHORITY_TOURIST_POLICE_EMAIL",
+  "Tourism Safety Unit": "AUTHORITY_SAFETY_EMAIL",
+  "Transport Management Office": "AUTHORITY_TRANSPORT_EMAIL",
+  "Hotel Standards Authority": "AUTHORITY_HOTEL_EMAIL",
+  "Consumer Protection / Pricing Cell": "AUTHORITY_PRICING_EMAIL",
+  "Guide Licensing Board": "AUTHORITY_GUIDE_EMAIL",
+  "Municipal Sanitation Office": "AUTHORITY_CLEANLINESS_EMAIL",
+  "Health Emergency Desk": "AUTHORITY_HEALTH_EMAIL",
+  "Lost and Found Desk": "AUTHORITY_LOST_ITEM_EMAIL",
+  "Tourism Complaint Cell": "DEFAULT_AUTHORITY_EMAIL",
+};
+
+const isUsableConfigValue = (value) =>
+  Boolean(value) &&
+  !String(value).includes("your_") &&
+  !String(value).includes("example.com");
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+const getConcernedAuthority = (category, geminiAuthority) => {
+  if (geminiAuthority && AUTHORITY_EMAIL_ENV_BY_AUTHORITY[geminiAuthority]) return geminiAuthority;
+  return AUTHORITY_BY_CATEGORY[String(category || "Other").toLowerCase()] || "Tourism Complaint Cell";
+};
+
+const getAuthorityEmail = (authority) => {
+  const envKey = AUTHORITY_EMAIL_ENV_BY_AUTHORITY[authority] || "DEFAULT_AUTHORITY_EMAIL";
+  const configuredEmail = process.env[envKey] || process.env.DEFAULT_AUTHORITY_EMAIL || "";
+  return isUsableConfigValue(configuredEmail) ? configuredEmail : "";
+};
+
+const createTransporter = () => {
+  if (
+    !isUsableConfigValue(process.env.SMTP_HOST) ||
+    !isUsableConfigValue(process.env.SMTP_USER) ||
+    !isUsableConfigValue(process.env.SMTP_PASS)
+  ) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+};
+
+const buildComplaintEmail = (record) => {
+  const safe = {
+    id: escapeHtml(record._id),
+    authority: escapeHtml(record.concernedAuthority),
+    category: escapeHtml(record.category),
+    criticalness: escapeHtml(record.criticalness),
+    status: escapeHtml(record.status),
+    inputType: escapeHtml(record.inputType),
+    language: escapeHtml(record.detectedLanguage),
+    touristName: escapeHtml(record.touristName || "Anonymous"),
+    touristNationality: escapeHtml(record.touristNationality || "nationality not provided"),
+    location: escapeHtml(record.location || "Not provided"),
+    summary: escapeHtml(record.summary || "Not available"),
+    originalTranscript: escapeHtml(record.originalTranscript || "Not available"),
+    translatedText: escapeHtml(record.translatedText || "Not available"),
+  };
+
+  const lines = [
+    `Complaint ID: ${record._id}`,
+    `Concerned authority: ${record.concernedAuthority}`,
+    `Category: ${record.category}`,
+    `Criticalness: ${record.criticalness}`,
+    `Status: ${record.status}`,
+    `Input type: ${record.inputType}`,
+    `Detected language: ${record.detectedLanguage}`,
+    `Tourist name: ${record.touristName || "Anonymous"}`,
+    `Tourist nationality: ${record.touristNationality || "Not provided"}`,
+    `Location: ${record.location || "Not provided"}`,
+    "",
+    `Summary: ${record.summary || "Not available"}`,
+    "",
+    `Original complaint: ${record.originalTranscript || "Not available"}`,
+    "",
+    `English translation: ${record.translatedText || "Not available"}`,
+  ];
+
+  return {
+    subject: `[${record.criticalness?.toUpperCase() || "MEDIUM"}] ${record.category} complaint - ${record.concernedAuthority}`,
+    text: lines.join("\n"),
+    html: `
+      <h2>Tourism Complaint Report</h2>
+      <p><strong>Complaint ID:</strong> ${safe.id}</p>
+      <p><strong>Concerned authority:</strong> ${safe.authority}</p>
+      <p><strong>Category:</strong> ${safe.category}</p>
+      <p><strong>Criticalness:</strong> ${safe.criticalness}</p>
+      <p><strong>Status:</strong> ${safe.status}</p>
+      <p><strong>Input type:</strong> ${safe.inputType}</p>
+      <p><strong>Detected language:</strong> ${safe.language}</p>
+      <p><strong>Tourist:</strong> ${safe.touristName} (${safe.touristNationality})</p>
+      <p><strong>Location:</strong> ${safe.location}</p>
+      <h3>Summary</h3>
+      <p>${safe.summary}</p>
+      <h3>Original Complaint</h3>
+      <p>${safe.originalTranscript}</p>
+      <h3>English Translation</h3>
+      <p>${safe.translatedText}</p>
+    `,
+  };
+};
+
+const notifyConcernedAuthority = async (record) => {
+  const to = record.concernedAuthorityEmail;
+  const transporter = createTransporter();
+
+  if (!to) {
+    return { sent: false, error: "No authority email configured." };
+  }
+
+  if (!transporter) {
+    return { sent: false, error: "SMTP is not configured." };
+  }
+
+  const email = buildComplaintEmail(record);
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to,
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
+  });
+
+  return { sent: true, error: "" };
+};
+
+const persistNotificationStatus = async (record) => {
+  try {
+    const result = await notifyConcernedAuthority(record);
+    record.notificationEmailSent = result.sent;
+    record.notificationEmailError = result.error;
+  } catch (error) {
+    record.notificationEmailSent = false;
+    record.notificationEmailError = error.message;
+  }
+
+  await record.save();
+  return record;
+};
 
 router.get("/complaints", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
@@ -133,7 +309,8 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
   "confidence": "<high | medium | low>",
   "summary": "<1-2 sentence summary>",
   "criticalness": "<high | medium | low>",
-  "category": "<${CATEGORY_OPTIONS}>"
+  "category": "<${CATEGORY_OPTIONS}>",
+  "concerned_authority": "<${AUTHORITY_OPTIONS}>"
 }
 
 Complaint text:
@@ -177,6 +354,7 @@ Complaint text:
       });
     }
 
+    const concernedAuthority = getConcernedAuthority(result.category, result.concerned_authority);
     const record = await Translation.create({
       inputType: "text",
       originalTranscript: text.trim(),
@@ -186,10 +364,14 @@ Complaint text:
       summary: result.summary || "",
       criticalness: normalizeLevel(result.criticalness),
       category: result.category || "Other",
+      concernedAuthority,
+      concernedAuthorityEmail: getAuthorityEmail(concernedAuthority),
       touristName,
       touristNationality,
       location,
     });
+
+    await persistNotificationStatus(record);
 
     return res.status(201).json({
       message: "Text complaint submitted successfully.",
@@ -238,7 +420,8 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
   "confidence": "<high | medium | low>",
   "summary": "<1-2 sentence summary>",
   "criticalness": "<high | medium | low>",
-  "category": "<${CATEGORY_OPTIONS}>"
+  "category": "<${CATEGORY_OPTIONS}>",
+  "concerned_authority": "<${AUTHORITY_OPTIONS}>"
 }
 `;
 
@@ -287,6 +470,7 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
       });
     }
 
+    const concernedAuthority = getConcernedAuthority(result.category, result.concerned_authority);
     const record = await Translation.create({
       inputType: "audio",
       originalTranscript: result.original_transcript || "",
@@ -296,11 +480,15 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
       summary: result.summary || "",
       criticalness: normalizeLevel(result.criticalness),
       category: result.category || "Other",
+      concernedAuthority,
+      concernedAuthorityEmail: getAuthorityEmail(concernedAuthority),
       touristName,
       touristNationality,
       location,
       audioMimeType: mimeType,
     });
+
+    await persistNotificationStatus(record);
 
     return res.status(201).json({
       message: "Complaint submitted successfully.",

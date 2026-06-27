@@ -183,6 +183,8 @@ function AuthorityPage() {
         complaint.touristName,
         complaint.inputType,
         complaint.category,
+        complaint.concernedAuthority,
+        complaint.concernedAuthorityEmail,
         complaint.location,
         complaint.detectedLanguage,
         complaint.summary,
@@ -406,6 +408,7 @@ function AuthorityPage() {
                     <th>Tourist</th>
                     <th>Source</th>
                     <th>Category</th>
+                    <th>Authority</th>
                     <th>Priority</th>
                     <th>Status</th>
                     <th>Language</th>
@@ -416,17 +419,17 @@ function AuthorityPage() {
                 <tbody>
                   {loading && (
                     <tr>
-                      <td colSpan="8" style={{ color: '#6B7280' }}>Loading complaints...</td>
+                      <td colSpan="9" style={{ color: '#6B7280' }}>Loading complaints...</td>
                     </tr>
                   )}
                   {!loading && complaints.length === 0 && (
                     <tr>
-                      <td colSpan="8" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
+                      <td colSpan="9" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
                     </tr>
                   )}
                   {!loading && complaints.length > 0 && filteredComplaints.length === 0 && (
                     <tr>
-                      <td colSpan="8" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
+                      <td colSpan="9" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
                     </tr>
                   )}
                   {!loading && filteredComplaints.map((complaint) => (
@@ -436,6 +439,7 @@ function AuthorityPage() {
                         <span className="result-pill">{complaint.inputType || 'text'}</span>
                       </td>
                       <td style={{ color: '#4A5568' }}>{complaint.category || 'Other'}</td>
+                      <td style={{ color: '#4A5568' }}>{complaint.concernedAuthority || 'Tourism Complaint Cell'}</td>
                       <td>
                         <span className={`badge ${priorityClass(complaint.criticalness)}`}>
                           {complaint.criticalness || 'medium'}
@@ -490,8 +494,12 @@ function AuthorityPage() {
                   <span className="result-pill">{selectedComplaint.category || 'Other'}</span>
                   <span className="result-pill">{selectedComplaint.detectedLanguage || 'Unknown'}</span>
                   <span className="result-pill">{selectedComplaint.inputType || 'text'}</span>
+                  <span className="result-pill">{selectedComplaint.concernedAuthority || 'Tourism Complaint Cell'}</span>
                   <span className={`badge ${statusClass(selectedComplaint.status)}`}>
                     {statusLabel(selectedComplaint.status)}
+                  </span>
+                  <span className={`badge ${selectedComplaint.notificationEmailSent ? 'resolved' : 'pending'}`}>
+                    {selectedComplaint.notificationEmailSent ? 'Email Sent' : 'Email Pending'}
                   </span>
                 </div>
                 <div className="status-actions">
@@ -521,6 +529,14 @@ function AuthorityPage() {
                 </div>
                 <div className="detail-grid">
                   <div>
+                    <h4>Concerned Authority</h4>
+                    <p>{selectedComplaint.concernedAuthority || 'Tourism Complaint Cell'}</p>
+                  </div>
+                  <div>
+                    <h4>Authority Email</h4>
+                    <p>{selectedComplaint.concernedAuthorityEmail || 'Not configured'}</p>
+                  </div>
+                  <div>
                     <h4>Location</h4>
                     <p>{selectedComplaint.location || 'Not provided'}</p>
                   </div>
@@ -529,6 +545,11 @@ function AuthorityPage() {
                     <p>{selectedComplaint.touristNationality || 'Not provided'}</p>
                   </div>
                 </div>
+                {!selectedComplaint.notificationEmailSent && selectedComplaint.notificationEmailError && (
+                  <div className="alert alert-error" role="alert">
+                    Email notification issue: {selectedComplaint.notificationEmailError}
+                  </div>
+                )}
               </div>
             )}
           </div>
