@@ -53,6 +53,11 @@ const translationSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    status: {
+      type: String,
+      enum: ["not_resolved", "in_process", "resolved"],
+      default: "not_resolved",
+    },
   },
   {
     timestamps: true,

@@ -31,9 +31,23 @@ const CATEGORY_FILTERS = [
   { value: 'other', label: 'Other', keywords: ['other'] },
 ];
 
+const STATUS_OPTIONS = [
+  { value: 'not_resolved', label: 'Not Resolved' },
+  { value: 'in_process', label: 'In Process' },
+  { value: 'resolved', label: 'Resolved' },
+];
+
 function priorityClass(priority) {
   const normalized = String(priority || 'medium').toLowerCase();
   return ['high', 'medium', 'low'].includes(normalized) ? normalized : 'medium';
+}
+
+function statusLabel(status) {
+  return STATUS_OPTIONS.find((option) => option.value === status)?.label || 'Not Resolved';
+}
+
+function statusClass(status) {
+  return status === 'resolved' ? 'resolved' : status === 'in_process' ? 'in-process' : 'pending';
 }
 
 function formatDate(value) {
@@ -55,8 +69,10 @@ function AuthorityPage() {
   const [filters, setFilters] = useState({
     category: 'all',
     priority: 'all',
+    status: 'all',
     search: '',
   });
+  const [updatingStatusId, setUpdatingStatusId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -107,7 +123,32 @@ function AuthorityPage() {
   };
 
   const resetFilters = () => {
-    setFilters({ category: 'all', priority: 'all', search: '' });
+    setFilters({ category: 'all', priority: 'all', status: 'all', search: '' });
+  };
+
+  const updateComplaintStatus = async (complaintId, status) => {
+    setUpdatingStatusId(complaintId);
+    setError('');
+    try {
+      const res = await fetch(`/api/gemini/complaints/${complaintId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update complaint status.');
+
+      setComplaints((prev) => prev.map((complaint) => (
+        complaint.id === complaintId ? data.complaint : complaint
+      )));
+      setSelectedComplaint((prev) => (
+        prev?.id === complaintId ? data.complaint : prev
+      ));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUpdatingStatusId('');
+    }
   };
 
   const complaintMatchesCategory = (complaint) => {
@@ -127,6 +168,7 @@ function AuthorityPage() {
     const search = filters.search.trim().toLowerCase();
     return complaints.filter((complaint) => {
       const priorityMatches = filters.priority === 'all' || priorityClass(complaint.criticalness) === filters.priority;
+      const statusMatches = filters.status === 'all' || (complaint.status || 'not_resolved') === filters.status;
       const searchMatches = !search || [
         complaint.touristName,
         complaint.category,
@@ -136,12 +178,12 @@ function AuthorityPage() {
         complaint.translatedText,
       ].join(' ').toLowerCase().includes(search);
 
-      return priorityMatches && searchMatches && complaintMatchesCategory(complaint);
+      return priorityMatches && statusMatches && searchMatches && complaintMatchesCategory(complaint);
     });
   }, [complaints, filters]);
 
   const highPriorityCount = complaints.filter((complaint) => complaint.criticalness === 'high').length;
-  const categorizedCount = complaints.filter((complaint) => complaint.category && complaint.category !== 'Other').length;
+  const resolvedCount = complaints.filter((complaint) => complaint.status === 'resolved').length;
 
   return (
     <div className="page-shell">
@@ -181,8 +223,8 @@ function AuthorityPage() {
           <div className="dash-stat">
             <div className="dash-stat-icon done"><IconCheck /></div>
             <div className="dash-stat-body">
-              <strong>{categorizedCount}</strong>
-              <small>Categorized</small>
+              <strong>{resolvedCount}</strong>
+              <small>Resolved</small>
             </div>
           </div>
           <div className="dash-stat">
@@ -221,6 +263,15 @@ function AuthorityPage() {
                   <option value="low">Low</option>
                 </select>
               </div>
+              <div className="field">
+                <label htmlFor="status">Status</label>
+                <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
+                  <option value="all">All Statuses</option>
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status.value} value={status.value}>{status.label}</option>
+                  ))}
+                </select>
+              </div>
               <div className="field filter-search">
                 <label htmlFor="search">Search</label>
                 <input
@@ -248,6 +299,7 @@ function AuthorityPage() {
                     <th>Tourist</th>
                     <th>Category</th>
                     <th>Priority</th>
+                    <th>Status</th>
                     <th>Language</th>
                     <th>Date</th>
                     <th>Action</th>
@@ -256,17 +308,17 @@ function AuthorityPage() {
                 <tbody>
                   {loading && (
                     <tr>
-                      <td colSpan="6" style={{ color: '#6B7280' }}>Loading complaints...</td>
+                      <td colSpan="7" style={{ color: '#6B7280' }}>Loading complaints...</td>
                     </tr>
                   )}
                   {!loading && complaints.length === 0 && (
                     <tr>
-                      <td colSpan="6" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
+                      <td colSpan="7" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
                     </tr>
                   )}
                   {!loading && complaints.length > 0 && filteredComplaints.length === 0 && (
                     <tr>
-                      <td colSpan="6" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
+                      <td colSpan="7" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
                     </tr>
                   )}
                   {!loading && filteredComplaints.map((complaint) => (
@@ -278,10 +330,28 @@ function AuthorityPage() {
                           {complaint.criticalness || 'medium'}
                         </span>
                       </td>
+                      <td>
+                        <span className={`badge ${statusClass(complaint.status)}`}>
+                          {statusLabel(complaint.status)}
+                        </span>
+                      </td>
                       <td style={{ color: '#6B7280' }}>{complaint.detectedLanguage || 'Unknown'}</td>
                       <td style={{ color: '#6B7280', fontVariantNumeric: 'tabular-nums' }}>{formatDate(complaint.createdAt)}</td>
                       <td>
-                        <button className="action-btn" onClick={() => setSelectedComplaint(complaint)}>View Details</button>
+                        <div className="table-actions">
+                          <button className="action-btn" onClick={() => setSelectedComplaint(complaint)}>View</button>
+                          <select
+                            className="status-select"
+                            value={complaint.status || 'not_resolved'}
+                            disabled={updatingStatusId === complaint.id}
+                            onChange={(event) => updateComplaintStatus(complaint.id, event.target.value)}
+                            aria-label="Update complaint status"
+                          >
+                            {STATUS_OPTIONS.map((status) => (
+                              <option key={status.value} value={status.value}>{status.label}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -308,6 +378,22 @@ function AuthorityPage() {
                   </span>
                   <span className="result-pill">{selectedComplaint.category || 'Other'}</span>
                   <span className="result-pill">{selectedComplaint.detectedLanguage || 'Unknown'}</span>
+                  <span className={`badge ${statusClass(selectedComplaint.status)}`}>
+                    {statusLabel(selectedComplaint.status)}
+                  </span>
+                </div>
+                <div className="status-actions">
+                  {STATUS_OPTIONS.map((status) => (
+                    <button
+                      key={status.value}
+                      type="button"
+                      className={selectedComplaint.status === status.value ? 'status-btn active' : 'status-btn'}
+                      disabled={updatingStatusId === selectedComplaint.id}
+                      onClick={() => updateComplaintStatus(selectedComplaint.id, status.value)}
+                    >
+                      {status.label}
+                    </button>
+                  ))}
                 </div>
                 <div>
                   <h4>Summary</h4>

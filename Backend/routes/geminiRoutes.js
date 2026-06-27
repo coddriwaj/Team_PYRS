@@ -37,8 +37,11 @@ const toComplaintDto = (record) => ({
   touristName: record.touristName,
   touristNationality: record.touristNationality,
   location: record.location,
+  status: record.status || "not_resolved",
   createdAt: record.createdAt,
 });
+
+const STATUS_VALUES = ["not_resolved", "in_process", "resolved"];
 
 router.get("/complaints", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
@@ -50,6 +53,31 @@ router.get("/complaints", async (req, res) => {
   return res.json({
     total: records.length,
     complaints: records.map(toComplaintDto),
+  });
+});
+
+router.patch("/complaints/:id/status", async (req, res) => {
+  const { status } = req.body;
+
+  if (!STATUS_VALUES.includes(status)) {
+    return res.status(400).json({
+      message: "Invalid status. Use not_resolved, in_process, or resolved.",
+    });
+  }
+
+  const record = await Translation.findByIdAndUpdate(
+    req.params.id,
+    { status },
+    { new: true }
+  );
+
+  if (!record) {
+    return res.status(404).json({ message: "Complaint not found." });
+  }
+
+  return res.json({
+    message: "Complaint status updated.",
+    complaint: toComplaintDto(record),
   });
 });
 
