@@ -376,6 +376,41 @@ input {
   font-size: 0.95rem;
 }
 
+.auth-switch-row {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.auth-switch-row a {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 14px 0;
+}
+
+.auth-page {
+  width: min(920px, calc(100% - 32px));
+}
+
+.auth-topbar {
+  padding-bottom: 12px;
+}
+
+.auth-main {
+  display: grid;
+  justify-items: center;
+}
+
+.auth-main .login-card {
+  width: min(100%, 560px);
+}
+
 @media (max-width: 960px) {
   .hero,
   .content-grid,
@@ -395,6 +430,10 @@ input {
   .page-shell {
     width: min(100% - 20px, 1200px);
     padding-top: 18px;
+  }
+
+  .auth-page {
+    width: min(100% - 20px, 920px);
   }
 
   .hero,
