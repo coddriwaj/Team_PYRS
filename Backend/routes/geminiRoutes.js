@@ -58,6 +58,24 @@ router.get("/complaints", async (req, res) => {
   });
 });
 
+router.get("/stats", async (req, res) => {
+  const [received, resolved, inProcess, notResolved, highPriority] = await Promise.all([
+    Translation.countDocuments({}),
+    Translation.countDocuments({ status: "resolved" }),
+    Translation.countDocuments({ status: "in_process" }),
+    Translation.countDocuments({ status: "not_resolved" }),
+    Translation.countDocuments({ criticalness: "high" }),
+  ]);
+
+  return res.json({
+    received,
+    resolved,
+    inProcess,
+    notResolved,
+    highPriority,
+  });
+});
+
 router.patch("/complaints/:id/status", async (req, res) => {
   const { status } = req.body;
 

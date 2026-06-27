@@ -27,12 +27,6 @@ const MountainSilhouette = () => (
 );
 
 /* ── Data ────────────────────────────────────────────── */
-const monthlyStats = [
-  { label: 'Received',   value: '1,248', cls: 'received', note: 'New complaints this month' },
-  { label: 'Resolved',   value: '972',   cls: 'resolved', note: 'Fully closed & verified' },
-  { label: 'In Process', value: '214',   cls: 'pending',  note: 'Currently under review' },
-];
-
 const aiWorkflow = [
   {
     step: '01',
@@ -91,6 +85,13 @@ const highlights = [
 /* ── Component ───────────────────────────────────────── */
 function HomePage() {
   const [user, setUser] = useState(null);
+  const [stats, setStats] = useState({
+    received: 0,
+    resolved: 0,
+    inProcess: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState('');
   const navigate = useNavigate();
 
   // Bug fix: useEffect always called before any conditional return
@@ -100,6 +101,29 @@ function HomePage() {
       try { setUser(JSON.parse(stored)); }
       catch { /* ignore malformed data */ }
     }
+  }, []);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      setStatsLoading(true);
+      setStatsError('');
+      try {
+        const res = await fetch('/api/gemini/stats');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Unable to load complaint statistics.');
+        setStats({
+          received: data.received || 0,
+          resolved: data.resolved || 0,
+          inProcess: data.inProcess || 0,
+        });
+      } catch (err) {
+        setStatsError(err.message);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    loadStats();
   }, []);
 
   const handleLogout = (e) => {
@@ -117,6 +141,12 @@ function HomePage() {
   const portalLabel = user
     ? (user.role === 'official' ? 'Go to Authority Dashboard' : 'Go to Public Dashboard')
     : 'Access Portal';
+
+  const complaintStats = [
+    { label: 'Received', value: stats.received, cls: 'received', note: 'Total complaints submitted' },
+    { label: 'Resolved', value: stats.resolved, cls: 'resolved', note: 'Marked resolved by officials' },
+    { label: 'In Process', value: stats.inProcess, cls: 'pending', note: 'Currently under review' },
+  ];
 
   return (
     <div className="page-shell">
@@ -187,14 +217,15 @@ function HomePage() {
 
         {/* ── Monthly stats ── */}
         <div className="stats-row" aria-label="Monthly complaint summary">
-          {monthlyStats.map(s => (
+          {complaintStats.map(s => (
             <div key={s.label} className="stat-card">
               <p className="stat-card-label">{s.label}</p>
-              <p className={`stat-card-value ${s.cls}`}>{s.value}</p>
+              <p className={`stat-card-value ${s.cls}`}>{statsLoading ? '...' : s.value.toLocaleString()}</p>
               <p className="stat-card-note">{s.note}</p>
             </div>
           ))}
         </div>
+        {statsError && <div className="alert alert-error" role="alert">{statsError}</div>}
 
         {/* ── Workflow ── */}
         <section className="card" id="overview" aria-labelledby="workflow-title">

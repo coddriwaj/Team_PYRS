@@ -375,7 +375,7 @@ function PublicPage() {
                 style={{ alignSelf: 'flex-start' }}
                 disabled={recording || processing || (submissionMode === 'audio' ? !audioBlob : !formData.complaintText.trim())}
               >
-                {processing ? 'Processing with Gemini...' : submissionMode === 'audio' ? 'Submit' : 'Submitting...'}
+                {processing ? 'Submitting...' : submissionMode === 'audio' ? 'Submit' : 'Submitting...'}
               </button>
             </form>
 
