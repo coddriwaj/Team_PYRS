@@ -88,7 +88,7 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
   "confidence": "<high | medium | low>",
   "summary": "<1-2 sentence summary>",
   "criticalness": "<high | medium | low>",
-  "category": "<Hotel / Accommodation | Transport | Tour Guide | Pricing / Overcharging | Safety | Cleanliness | Harassment | Other>"
+  "category": "<Road Problems | Hotel / Accommodation | Transport | Tour Guide | Pricing / Overcharging | Safety | Cleanliness | Harassment | Health / Medical | Lost Item | Other>"
 }
 `;
 

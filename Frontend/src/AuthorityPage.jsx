@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const IconList = () => (
@@ -17,6 +17,19 @@ const IconClock = () => (
     <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
   </svg>
 );
+
+const CATEGORY_FILTERS = [
+  { value: 'all', label: 'All Categories', keywords: [] },
+  { value: 'road', label: 'Road Problems', keywords: ['road', 'route', 'path', 'trail', 'traffic', 'street', 'bridge', 'pothole', 'blocked'] },
+  { value: 'harassment', label: 'Harassment', keywords: ['harassment', 'harass', 'abuse', 'threat', 'misconduct'] },
+  { value: 'safety', label: 'Safety', keywords: ['safety', 'danger', 'hazard', 'unsafe', 'accident', 'emergency'] },
+  { value: 'transport', label: 'Transport', keywords: ['transport', 'taxi', 'bus', 'vehicle', 'driver', 'ride'] },
+  { value: 'hotel', label: 'Hotel / Accommodation', keywords: ['hotel', 'accommodation', 'room', 'lodge', 'guest house'] },
+  { value: 'pricing', label: 'Pricing / Overcharging', keywords: ['pricing', 'overcharging', 'overcharge', 'price', 'payment', 'scam'] },
+  { value: 'guide', label: 'Tour Guide', keywords: ['guide', 'trekking guide', 'tour guide'] },
+  { value: 'cleanliness', label: 'Cleanliness', keywords: ['cleanliness', 'hygiene', 'dirty', 'sanitation', 'waste'] },
+  { value: 'other', label: 'Other', keywords: ['other'] },
+];
 
 function priorityClass(priority) {
   const normalized = String(priority || 'medium').toLowerCase();
@@ -39,6 +52,11 @@ function AuthorityPage() {
   const [official, setOfficial] = useState(null);
   const [complaints, setComplaints] = useState([]);
   const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [filters, setFilters] = useState({
+    category: 'all',
+    priority: 'all',
+    search: '',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -82,6 +100,45 @@ function AuthorityPage() {
     sessionStorage.removeItem('userRole');
     navigate('/login');
   };
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const resetFilters = () => {
+    setFilters({ category: 'all', priority: 'all', search: '' });
+  };
+
+  const complaintMatchesCategory = (complaint) => {
+    if (filters.category === 'all') return true;
+    const selected = CATEGORY_FILTERS.find((category) => category.value === filters.category);
+    const categoryText = [
+      complaint.category,
+      complaint.summary,
+      complaint.translatedText,
+      complaint.originalTranscript,
+    ].join(' ').toLowerCase();
+
+    return selected?.keywords.some((keyword) => categoryText.includes(keyword)) ?? true;
+  };
+
+  const filteredComplaints = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+    return complaints.filter((complaint) => {
+      const priorityMatches = filters.priority === 'all' || priorityClass(complaint.criticalness) === filters.priority;
+      const searchMatches = !search || [
+        complaint.touristName,
+        complaint.category,
+        complaint.location,
+        complaint.detectedLanguage,
+        complaint.summary,
+        complaint.translatedText,
+      ].join(' ').toLowerCase().includes(search);
+
+      return priorityMatches && searchMatches && complaintMatchesCategory(complaint);
+    });
+  }, [complaints, filters]);
 
   const highPriorityCount = complaints.filter((complaint) => complaint.criticalness === 'high').length;
   const categorizedCount = complaints.filter((complaint) => complaint.category && complaint.category !== 'Other').length;
@@ -145,6 +202,45 @@ function AuthorityPage() {
               <p className="eyebrow">Recent Complaints</p>
               <h3>Latest Gemini results requiring attention</h3>
             </div>
+
+            <div className="filter-bar">
+              <div className="field">
+                <label htmlFor="category">Category</label>
+                <select id="category" name="category" value={filters.category} onChange={handleFilterChange}>
+                  {CATEGORY_FILTERS.map((category) => (
+                    <option key={category.value} value={category.value}>{category.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="priority">Priority</label>
+                <select id="priority" name="priority" value={filters.priority} onChange={handleFilterChange}>
+                  <option value="all">All Priorities</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div className="field filter-search">
+                <label htmlFor="search">Search</label>
+                <input
+                  id="search"
+                  name="search"
+                  type="search"
+                  placeholder="Tourist, place, category, text"
+                  value={filters.search}
+                  onChange={handleFilterChange}
+                />
+              </div>
+              <button type="button" className="btn-secondary filter-reset" onClick={resetFilters}>
+                Reset
+              </button>
+            </div>
+
+            <p className="filter-count">
+              Showing {filteredComplaints.length} of {complaints.length} complaints
+            </p>
+
             <div className="table-scroll">
               <table>
                 <thead>
@@ -168,7 +264,12 @@ function AuthorityPage() {
                       <td colSpan="6" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
                     </tr>
                   )}
-                  {!loading && complaints.map((complaint) => (
+                  {!loading && complaints.length > 0 && filteredComplaints.length === 0 && (
+                    <tr>
+                      <td colSpan="6" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
+                    </tr>
+                  )}
+                  {!loading && filteredComplaints.map((complaint) => (
                     <tr key={complaint.id}>
                       <td style={{ fontWeight: 500 }}>{complaint.touristName || 'Anonymous'}</td>
                       <td style={{ color: '#4A5568' }}>{complaint.category || 'Other'}</td>
