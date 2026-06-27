@@ -579,6 +579,29 @@ tbody td { padding: 0.9rem 1rem; font-size: 0.875rem; color: var(--ink); vertica
 
 /* ── Complaint form ──────────────────────────────────── */
 .complaint-form { display: flex; flex-direction: column; gap: 1.25rem; }
+.mode-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid #D1D8E0;
+  border-radius: var(--radius-sm);
+  background: #EEF2F6;
+  width: min(100%, 280px);
+}
+.mode-tab {
+  border-radius: 5px;
+  padding: 0.55rem 0.75rem;
+  color: #4A5568;
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.mode-tab.active {
+  background: var(--white);
+  color: var(--crimson);
+  box-shadow: var(--shadow-sm);
+}
 .public-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);

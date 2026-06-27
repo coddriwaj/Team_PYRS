@@ -171,6 +171,7 @@ function AuthorityPage() {
       const statusMatches = filters.status === 'all' || (complaint.status || 'not_resolved') === filters.status;
       const searchMatches = !search || [
         complaint.touristName,
+        complaint.inputType,
         complaint.category,
         complaint.location,
         complaint.detectedLanguage,
@@ -297,6 +298,7 @@ function AuthorityPage() {
                 <thead>
                   <tr>
                     <th>Tourist</th>
+                    <th>Source</th>
                     <th>Category</th>
                     <th>Priority</th>
                     <th>Status</th>
@@ -308,22 +310,25 @@ function AuthorityPage() {
                 <tbody>
                   {loading && (
                     <tr>
-                      <td colSpan="7" style={{ color: '#6B7280' }}>Loading complaints...</td>
+                      <td colSpan="8" style={{ color: '#6B7280' }}>Loading complaints...</td>
                     </tr>
                   )}
                   {!loading && complaints.length === 0 && (
                     <tr>
-                      <td colSpan="7" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
+                      <td colSpan="8" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
                     </tr>
                   )}
                   {!loading && complaints.length > 0 && filteredComplaints.length === 0 && (
                     <tr>
-                      <td colSpan="7" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
+                      <td colSpan="8" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
                     </tr>
                   )}
                   {!loading && filteredComplaints.map((complaint) => (
                     <tr key={complaint.id}>
                       <td style={{ fontWeight: 500 }}>{complaint.touristName || 'Anonymous'}</td>
+                      <td>
+                        <span className="result-pill">{complaint.inputType || 'text'}</span>
+                      </td>
                       <td style={{ color: '#4A5568' }}>{complaint.category || 'Other'}</td>
                       <td>
                         <span className={`badge ${priorityClass(complaint.criticalness)}`}>
@@ -378,6 +383,7 @@ function AuthorityPage() {
                   </span>
                   <span className="result-pill">{selectedComplaint.category || 'Other'}</span>
                   <span className="result-pill">{selectedComplaint.detectedLanguage || 'Unknown'}</span>
+                  <span className="result-pill">{selectedComplaint.inputType || 'text'}</span>
                   <span className={`badge ${statusClass(selectedComplaint.status)}`}>
                     {statusLabel(selectedComplaint.status)}
                   </span>

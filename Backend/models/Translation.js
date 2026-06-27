@@ -4,8 +4,8 @@ const translationSchema = new mongoose.Schema(
   {
     inputType: {
       type: String,
-      enum: ["audio"],
-      default: "audio",
+      enum: ["audio", "text"],
+      default: "text",
     },
     originalTranscript: {
       type: String,

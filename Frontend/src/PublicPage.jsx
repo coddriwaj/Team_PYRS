@@ -14,7 +14,9 @@ function PublicPage() {
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [submissionMode, setSubmissionMode] = useState('audio');
   const [formData, setFormData] = useState({
+    complaintText: '',
     touristNationality: '',
     location: '',
   });
@@ -116,34 +118,63 @@ function PublicPage() {
     setError('');
   };
 
+  const submitAudioComplaint = async () => {
+    const audioBase64 = await blobToBase64(audioBlob);
+    const res = await fetch('/api/gemini/transcribe-classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audioBase64,
+        mimeType: audioBlob.type || 'audio/webm',
+        touristName: user?.name || 'Anonymous',
+        touristNationality: formData.touristNationality,
+        location: formData.location,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Gemini audio processing failed.');
+    resetRecording();
+    return data.message || 'Audio complaint processed and submitted successfully.';
+  };
+
+  const submitTextComplaint = async () => {
+    const res = await fetch('/api/gemini/classify-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: formData.complaintText,
+        touristName: user?.name || 'Anonymous',
+        touristNationality: formData.touristNationality,
+        location: formData.location,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Gemini text classification failed.');
+    setFormData((prev) => ({ ...prev, complaintText: '' }));
+    return data.message || 'Text complaint submitted successfully.';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
     setError('');
 
-    if (!audioBlob) {
+    if (submissionMode === 'audio' && !audioBlob) {
       setError('Record an audio complaint before submitting.');
+      return;
+    }
+
+    if (submissionMode === 'text' && !formData.complaintText.trim()) {
+      setError('Write your complaint before submitting.');
       return;
     }
 
     setProcessing(true);
     try {
-      const audioBase64 = await blobToBase64(audioBlob);
-      const res = await fetch('/api/gemini/transcribe-classify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audioBase64,
-          mimeType: audioBlob.type || 'audio/webm',
-          touristName: user?.name || 'Anonymous',
-          touristNationality: formData.touristNationality,
-          location: formData.location,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Gemini processing failed.');
-      resetRecording();
-      setMessage(data.message || 'Audio complaint processed and submitted successfully.');
+      const successMessage = submissionMode === 'audio'
+        ? await submitAudioComplaint()
+        : await submitTextComplaint();
+      setMessage(successMessage);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -173,20 +204,40 @@ function PublicPage() {
 
       <main className="dashboard-layout">
         <div className="dashboard-header">
-          <p className="eyebrow">AI Audio Complaint</p>
-          <h2>Record, transcribe, and classify your tourism issue</h2>
-          <p>Speak in any language. Gemini will transcribe, translate, summarize, and classify the complaint.</p>
+          <p className="eyebrow">AI Complaint Intake</p>
+          <h2>Record or write your tourism issue</h2>
+          <p>Submit in any language. Gemini will translate, summarize, categorize, and route the complaint to officials.</p>
         </div>
 
         <div className="public-grid public-grid-single">
           <div className="card">
             <div className="section-label">
-              <p className="eyebrow">Recorder</p>
-              <h3>Capture your complaint audio</h3>
+              <p className="eyebrow">Complaint Input</p>
+              <h3>Choose audio or text</h3>
             </div>
 
             <form className="complaint-form" onSubmit={handleSubmit}>
-              <div className={`recorder-panel ${recording ? 'is-recording' : ''}`}>
+              <div className="mode-tabs" role="tablist" aria-label="Complaint input type">
+                <button
+                  type="button"
+                  className={submissionMode === 'audio' ? 'mode-tab active' : 'mode-tab'}
+                  onClick={() => setSubmissionMode('audio')}
+                  disabled={processing || recording}
+                >
+                  Audio
+                </button>
+                <button
+                  type="button"
+                  className={submissionMode === 'text' ? 'mode-tab active' : 'mode-tab'}
+                  onClick={() => setSubmissionMode('text')}
+                  disabled={processing || recording}
+                >
+                  Text
+                </button>
+              </div>
+
+              {submissionMode === 'audio' ? (
+                <div className={`recorder-panel ${recording ? 'is-recording' : ''}`}>
                 <div className="recording-status">
                   <span className="recording-dot" aria-hidden="true" />
                   <strong>{recording ? 'Recording in progress' : audioBlob ? 'Recording ready' : 'Ready to record'}</strong>
@@ -211,6 +262,20 @@ function PublicPage() {
                   </audio>
                 )}
               </div>
+              ) : (
+                <div className="field">
+                  <label htmlFor="complaintText">Complaint Details</label>
+                  <textarea
+                    id="complaintText"
+                    name="complaintText"
+                    rows="7"
+                    placeholder="Write your issue in any language."
+                    value={formData.complaintText}
+                    onChange={handleChange}
+                    disabled={processing}
+                  />
+                </div>
+              )}
 
               <div className="field">
                 <label htmlFor="touristNationality">Nationality</label>
@@ -238,8 +303,13 @@ function PublicPage() {
                 />
               </div>
 
-              <button type="submit" className="btn-primary" style={{ alignSelf: 'flex-start' }} disabled={recording || processing || !audioBlob}>
-                {processing ? 'Processing with Gemini...' : 'Transcribe and Classify'}
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ alignSelf: 'flex-start' }}
+                disabled={recording || processing || (submissionMode === 'audio' ? !audioBlob : !formData.complaintText.trim())}
+              >
+                {processing ? 'Processing with Gemini...' : submissionMode === 'audio' ? 'Transcribe and Classify' : 'Classify Text Complaint'}
               </button>
             </form>
 

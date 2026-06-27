@@ -27,6 +27,7 @@ const readGeminiText = (payload) =>
 
 const toComplaintDto = (record) => ({
   id: record._id,
+  inputType: record.inputType || "text",
   originalTranscript: record.originalTranscript,
   translatedText: record.translatedText,
   detectedLanguage: record.detectedLanguage,
@@ -42,6 +43,7 @@ const toComplaintDto = (record) => ({
 });
 
 const STATUS_VALUES = ["not_resolved", "in_process", "resolved"];
+const CATEGORY_OPTIONS = "Road Problems | Hotel / Accommodation | Transport | Tour Guide | Pricing / Overcharging | Safety | Cleanliness | Harassment | Health / Medical | Lost Item | Other";
 
 router.get("/complaints", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
@@ -81,6 +83,108 @@ router.patch("/complaints/:id/status", async (req, res) => {
   });
 });
 
+router.post("/classify-text", async (req, res) => {
+  const {
+    text,
+    touristName = "Anonymous",
+    touristNationality = "",
+    location = "",
+  } = req.body;
+
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ message: "GEMINI_API_KEY is not configured on the backend." });
+  }
+
+  if (!text?.trim()) {
+    return res.status(400).json({ message: "Complaint text is required." });
+  }
+
+  const prompt = `
+Classify this tourist complaint text carefully.
+1. Detect the language.
+2. Translate the complaint to English if needed.
+3. Summarize the complaint in 1-2 sentences.
+4. Classify the complaint category.
+5. Assess criticalness.
+
+Respond ONLY with a valid JSON object, no markdown, no backticks:
+
+{
+  "detected_language": "<language name>",
+  "translated_text": "<accurate English translation>",
+  "confidence": "<high | medium | low>",
+  "summary": "<1-2 sentence summary>",
+  "criticalness": "<high | medium | low>",
+  "category": "<${CATEGORY_OPTIONS}>"
+}
+
+Complaint text:
+"""${text.trim()}"""
+`;
+
+  try {
+    const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${process.env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+      }),
+    });
+
+    const geminiPayload = await geminiResponse.json();
+
+    if (!geminiResponse.ok) {
+      return res.status(geminiResponse.status).json({
+        message: geminiPayload?.error?.message || "Gemini text classification failed.",
+      });
+    }
+
+    const rawText = readGeminiText(geminiPayload);
+    if (!rawText) {
+      return res.status(502).json({ message: "Gemini returned an empty response." });
+    }
+
+    let result;
+    try {
+      result = JSON.parse(stripJsonFence(rawText));
+    } catch {
+      return res.status(502).json({
+        message: "Gemini response could not be parsed as JSON.",
+        rawText,
+      });
+    }
+
+    const record = await Translation.create({
+      inputType: "text",
+      originalTranscript: text.trim(),
+      translatedText: result.translated_text || text.trim(),
+      detectedLanguage: result.detected_language || "Unknown",
+      confidence: normalizeLevel(result.confidence),
+      summary: result.summary || "",
+      criticalness: normalizeLevel(result.criticalness),
+      category: result.category || "Other",
+      touristName,
+      touristNationality,
+      location,
+    });
+
+    return res.status(201).json({
+      message: "Text complaint submitted successfully.",
+      complaint: toComplaintDto(record),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Unable to classify text with Gemini.",
+      error: error.message,
+    });
+  }
+});
+
 router.post("/transcribe-classify", async (req, res) => {
   const {
     audioBase64,
@@ -116,7 +220,7 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
   "confidence": "<high | medium | low>",
   "summary": "<1-2 sentence summary>",
   "criticalness": "<high | medium | low>",
-  "category": "<Road Problems | Hotel / Accommodation | Transport | Tour Guide | Pricing / Overcharging | Safety | Cleanliness | Harassment | Health / Medical | Lost Item | Other>"
+  "category": "<${CATEGORY_OPTIONS}>"
 }
 `;
 
