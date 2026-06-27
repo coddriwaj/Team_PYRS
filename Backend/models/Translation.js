@@ -1,0 +1,64 @@
+import mongoose from "mongoose";
+
+const translationSchema = new mongoose.Schema(
+  {
+    inputType: {
+      type: String,
+      enum: ["audio"],
+      default: "audio",
+    },
+    originalTranscript: {
+      type: String,
+      default: "",
+    },
+    translatedText: {
+      type: String,
+      default: "",
+    },
+    detectedLanguage: {
+      type: String,
+      default: "Unknown",
+    },
+    confidence: {
+      type: String,
+      enum: ["high", "medium", "low"],
+      default: "medium",
+    },
+    summary: {
+      type: String,
+      default: "",
+    },
+    criticalness: {
+      type: String,
+      enum: ["high", "medium", "low"],
+      default: "medium",
+    },
+    category: {
+      type: String,
+      default: "Other",
+    },
+    touristName: {
+      type: String,
+      default: "Anonymous",
+    },
+    touristNationality: {
+      type: String,
+      default: "",
+    },
+    location: {
+      type: String,
+      default: "",
+    },
+    audioMimeType: {
+      type: String,
+      default: "",
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+const Translation = mongoose.model("Translation", translationSchema);
+
+export default Translation;

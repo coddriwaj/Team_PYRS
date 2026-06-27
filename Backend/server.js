@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
+import geminiRoutes from "./routes/geminiRoutes.js";
 
 dotenv.config();
 
@@ -20,7 +21,7 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -28,6 +29,7 @@ mongoose
   .catch((err) => console.log(err));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/gemini", geminiRoutes);
 
 app.get("/", (req, res) => {
   res.send("API Running");
