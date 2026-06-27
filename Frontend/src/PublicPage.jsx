@@ -174,6 +174,20 @@ function PublicPage() {
     setError('');
   };
 
+  const buildSubmissionMessage = (data, fallbackMessage) => {
+    const complaint = data.complaint;
+    const baseMessage = data.message || fallbackMessage;
+    if (/email|notification|routed/i.test(baseMessage)) return baseMessage;
+    if (!complaint) return data.message || fallbackMessage;
+
+    const authority = complaint.concernedAuthority || 'Tourism Complaint Cell';
+    if (complaint.notificationEmailSent) {
+      return `${baseMessage} Email sent to ${authority}.`;
+    }
+
+    return `${baseMessage} Routed to ${authority}, but email is pending: ${complaint.notificationEmailError || 'SMTP or authority email configuration needs attention.'}`;
+  };
+
   const submitAudioComplaint = async () => {
     const audioBase64 = await blobToBase64(audioBlob);
     const res = await fetch('/api/gemini/transcribe-classify', {
@@ -190,7 +204,7 @@ function PublicPage() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Gemini audio processing failed.');
     resetRecording();
-    return data.message || 'Audio complaint processed and submitted successfully.';
+    return buildSubmissionMessage(data, 'Audio complaint processed and submitted successfully.');
   };
 
   const submitTextComplaint = async () => {
@@ -207,7 +221,7 @@ function PublicPage() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Gemini text classification failed.');
     setFormData((prev) => ({ ...prev, complaintText: '' }));
-    return data.message || 'Text complaint submitted successfully.';
+    return buildSubmissionMessage(data, 'Text complaint submitted successfully.');
   };
 
   const handleSubmit = async (e) => {
@@ -375,7 +389,7 @@ function PublicPage() {
                 style={{ alignSelf: 'flex-start' }}
                 disabled={recording || processing || (submissionMode === 'audio' ? !audioBlob : !formData.complaintText.trim())}
               >
-                {processing ? 'Submitting...' : submissionMode === 'audio' ? 'Submit' : 'Submitting...'}
+                {processing ? 'Submitting...' : submissionMode === 'audio' ? 'Submit Audio Complaint' : 'Submit Text Complaint'}
               </button>
             </form>
 

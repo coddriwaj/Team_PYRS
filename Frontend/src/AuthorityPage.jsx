@@ -83,6 +83,7 @@ function AuthorityPage() {
     search: '',
   });
   const [updatingStatusId, setUpdatingStatusId] = useState('');
+  const [sendingEmailId, setSendingEmailId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -158,6 +159,29 @@ function AuthorityPage() {
       setError(err.message);
     } finally {
       setUpdatingStatusId('');
+    }
+  };
+
+  const sendNotificationEmail = async (complaintId) => {
+    setSendingEmailId(complaintId);
+    setError('');
+    try {
+      const res = await fetch(`/api/gemini/complaints/${complaintId}/notify`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to send notification email.');
+
+      setComplaints((prev) => prev.map((complaint) => (
+        complaint.id === complaintId ? data.complaint : complaint
+      )));
+      setSelectedComplaint((prev) => (
+        prev?.id === complaintId ? data.complaint : prev
+      ));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSendingEmailId('');
     }
   };
 
@@ -411,6 +435,7 @@ function AuthorityPage() {
                     <th>Authority</th>
                     <th>Priority</th>
                     <th>Status</th>
+                    <th>Email</th>
                     <th>Language</th>
                     <th>Date</th>
                     <th>Action</th>
@@ -419,17 +444,17 @@ function AuthorityPage() {
                 <tbody>
                   {loading && (
                     <tr>
-                      <td colSpan="9" style={{ color: '#6B7280' }}>Loading complaints...</td>
+                      <td colSpan="10" style={{ color: '#6B7280' }}>Loading complaints...</td>
                     </tr>
                   )}
                   {!loading && complaints.length === 0 && (
                     <tr>
-                      <td colSpan="9" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
+                      <td colSpan="10" style={{ color: '#6B7280' }}>No Gemini complaints have been submitted yet.</td>
                     </tr>
                   )}
                   {!loading && complaints.length > 0 && filteredComplaints.length === 0 && (
                     <tr>
-                      <td colSpan="9" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
+                      <td colSpan="10" style={{ color: '#6B7280' }}>No complaints match the selected filters.</td>
                     </tr>
                   )}
                   {!loading && filteredComplaints.map((complaint) => (
@@ -448,6 +473,11 @@ function AuthorityPage() {
                       <td>
                         <span className={`badge ${statusClass(complaint.status)}`}>
                           {statusLabel(complaint.status)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge ${complaint.notificationEmailSent ? 'resolved' : 'pending'}`}>
+                          {complaint.notificationEmailSent ? 'Sent' : 'Pending'}
                         </span>
                       </td>
                       <td style={{ color: '#6B7280' }}>{complaint.detectedLanguage || 'Unknown'}</td>
@@ -514,6 +544,14 @@ function AuthorityPage() {
                       {status.label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="status-btn"
+                    disabled={sendingEmailId === selectedComplaint.id}
+                    onClick={() => sendNotificationEmail(selectedComplaint.id)}
+                  >
+                    {sendingEmailId === selectedComplaint.id ? 'Sending Email...' : 'Send Email'}
+                  </button>
                 </div>
                 <div>
                   <h4>Summary</h4>

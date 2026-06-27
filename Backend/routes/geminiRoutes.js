@@ -97,6 +97,13 @@ const getConcernedAuthority = (category, geminiAuthority) => {
   return AUTHORITY_BY_CATEGORY[String(category || "Other").toLowerCase()] || "Tourism Complaint Cell";
 };
 
+const resolveComplaintAuthority = (record) => {
+  const authority = getConcernedAuthority(record.category, record.concernedAuthority);
+  record.concernedAuthority = authority;
+  record.concernedAuthorityEmail = getAuthorityEmail(authority);
+  return record;
+};
+
 const getAuthorityEmail = (authority) => {
   const envKey = AUTHORITY_EMAIL_ENV_BY_AUTHORITY[authority] || "DEFAULT_AUTHORITY_EMAIL";
   const configuredEmail = process.env[envKey] || process.env.DEFAULT_AUTHORITY_EMAIL || "";
@@ -221,6 +228,14 @@ const persistNotificationStatus = async (record) => {
   return record;
 };
 
+const complaintSubmissionMessage = (record, fallback) => {
+  if (record.notificationEmailSent) {
+    return `${fallback} Notification email sent to ${record.concernedAuthority}.`;
+  }
+
+  return `${fallback} Complaint routed to ${record.concernedAuthority}, but email is pending.`;
+};
+
 router.get("/complaints", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
   const records = await Translation.find({})
@@ -273,6 +288,24 @@ router.patch("/complaints/:id/status", async (req, res) => {
 
   return res.json({
     message: "Complaint status updated.",
+    complaint: toComplaintDto(record),
+  });
+});
+
+router.post("/complaints/:id/notify", async (req, res) => {
+  const record = await Translation.findById(req.params.id);
+
+  if (!record) {
+    return res.status(404).json({ message: "Complaint not found." });
+  }
+
+  resolveComplaintAuthority(record);
+  await persistNotificationStatus(record);
+
+  return res.json({
+    message: record.notificationEmailSent
+      ? "Notification email sent."
+      : "Notification email was not sent. Check SMTP and authority email configuration.",
     complaint: toComplaintDto(record),
   });
 });
@@ -354,7 +387,6 @@ Complaint text:
       });
     }
 
-    const concernedAuthority = getConcernedAuthority(result.category, result.concerned_authority);
     const record = await Translation.create({
       inputType: "text",
       originalTranscript: text.trim(),
@@ -364,17 +396,17 @@ Complaint text:
       summary: result.summary || "",
       criticalness: normalizeLevel(result.criticalness),
       category: result.category || "Other",
-      concernedAuthority,
-      concernedAuthorityEmail: getAuthorityEmail(concernedAuthority),
+      concernedAuthority: getConcernedAuthority(result.category, result.concerned_authority),
       touristName,
       touristNationality,
       location,
     });
 
+    resolveComplaintAuthority(record);
     await persistNotificationStatus(record);
 
     return res.status(201).json({
-      message: "Text complaint submitted successfully.",
+      message: complaintSubmissionMessage(record, "Text complaint submitted successfully."),
       complaint: toComplaintDto(record),
     });
   } catch (error) {
@@ -470,7 +502,6 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
       });
     }
 
-    const concernedAuthority = getConcernedAuthority(result.category, result.concerned_authority);
     const record = await Translation.create({
       inputType: "audio",
       originalTranscript: result.original_transcript || "",
@@ -480,18 +511,18 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
       summary: result.summary || "",
       criticalness: normalizeLevel(result.criticalness),
       category: result.category || "Other",
-      concernedAuthority,
-      concernedAuthorityEmail: getAuthorityEmail(concernedAuthority),
+      concernedAuthority: getConcernedAuthority(result.category, result.concerned_authority),
       touristName,
       touristNationality,
       location,
       audioMimeType: mimeType,
     });
 
+    resolveComplaintAuthority(record);
     await persistNotificationStatus(record);
 
     return res.status(201).json({
-      message: "Complaint submitted successfully.",
+      message: complaintSubmissionMessage(record, "Complaint submitted successfully."),
       complaint: toComplaintDto(record),
     });
   } catch (error) {
