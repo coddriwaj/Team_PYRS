@@ -209,6 +209,7 @@ function AuthorityPage() {
         complaint.category,
         complaint.concernedAuthority,
         complaint.concernedAuthorityEmail,
+        complaint.photoFileName,
         complaint.location,
         complaint.detectedLanguage,
         complaint.summary,
@@ -583,6 +584,16 @@ function AuthorityPage() {
                     <p>{selectedComplaint.touristNationality || 'Not provided'}</p>
                   </div>
                 </div>
+                {selectedComplaint.photoBase64 && (
+                  <div>
+                    <h4>Attached Photo</h4>
+                    <img
+                      className="complaint-photo"
+                      src={`data:${selectedComplaint.photoMimeType || 'image/jpeg'};base64,${selectedComplaint.photoBase64}`}
+                      alt={selectedComplaint.photoFileName || 'Complaint attachment'}
+                    />
+                  </div>
+                )}
                 {!selectedComplaint.notificationEmailSent && selectedComplaint.notificationEmailError && (
                   <div className="alert alert-error" role="alert">
                     Email notification issue: {selectedComplaint.notificationEmailError}

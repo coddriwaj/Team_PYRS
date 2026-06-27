@@ -43,6 +43,9 @@ const toComplaintDto = (record) => ({
   touristName: record.touristName,
   touristNationality: record.touristNationality,
   location: record.location,
+  photoBase64: record.photoBase64,
+  photoMimeType: record.photoMimeType,
+  photoFileName: record.photoFileName,
   status: record.status || "not_resolved",
   createdAt: record.createdAt,
 });
@@ -142,6 +145,7 @@ const buildComplaintEmail = (record) => {
     touristName: escapeHtml(record.touristName || "Anonymous"),
     touristNationality: escapeHtml(record.touristNationality || "nationality not provided"),
     location: escapeHtml(record.location || "Not provided"),
+    photoFileName: escapeHtml(record.photoFileName || "No photo attached"),
     summary: escapeHtml(record.summary || "Not available"),
     originalTranscript: escapeHtml(record.originalTranscript || "Not available"),
     translatedText: escapeHtml(record.translatedText || "Not available"),
@@ -158,6 +162,7 @@ const buildComplaintEmail = (record) => {
     `Tourist name: ${record.touristName || "Anonymous"}`,
     `Tourist nationality: ${record.touristNationality || "Not provided"}`,
     `Location: ${record.location || "Not provided"}`,
+    `Photo attachment: ${record.photoFileName || "No photo attached"}`,
     "",
     `Summary: ${record.summary || "Not available"}`,
     "",
@@ -180,6 +185,7 @@ const buildComplaintEmail = (record) => {
       <p><strong>Detected language:</strong> ${safe.language}</p>
       <p><strong>Tourist:</strong> ${safe.touristName} (${safe.touristNationality})</p>
       <p><strong>Location:</strong> ${safe.location}</p>
+      <p><strong>Photo attachment:</strong> ${safe.photoFileName}</p>
       <h3>Summary</h3>
       <p>${safe.summary}</p>
       <h3>Original Complaint</h3>
@@ -209,6 +215,12 @@ const notifyConcernedAuthority = async (record) => {
     subject: email.subject,
     text: email.text,
     html: email.html,
+    attachments: record.photoBase64 ? [{
+      filename: record.photoFileName || "complaint-photo.jpg",
+      content: record.photoBase64,
+      encoding: "base64",
+      contentType: record.photoMimeType || "image/jpeg",
+    }] : [],
   });
 
   return { sent: true, error: "" };
@@ -316,6 +328,9 @@ router.post("/classify-text", async (req, res) => {
     touristName = "Anonymous",
     touristNationality = "",
     location = "",
+    photoBase64 = "",
+    photoMimeType = "",
+    photoFileName = "",
   } = req.body;
 
   if (!process.env.GEMINI_API_KEY) {
@@ -400,6 +415,9 @@ Complaint text:
       touristName,
       touristNationality,
       location,
+      photoBase64,
+      photoMimeType,
+      photoFileName,
     });
 
     resolveComplaintAuthority(record);
@@ -424,6 +442,9 @@ router.post("/transcribe-classify", async (req, res) => {
     touristName = "Anonymous",
     touristNationality = "",
     location = "",
+    photoBase64 = "",
+    photoMimeType = "",
+    photoFileName = "",
   } = req.body;
 
   if (!process.env.GEMINI_API_KEY) {
@@ -516,6 +537,9 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
       touristNationality,
       location,
       audioMimeType: mimeType,
+      photoBase64,
+      photoMimeType,
+      photoFileName,
     });
 
     resolveComplaintAuthority(record);

@@ -69,6 +69,18 @@ const translationSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    photoBase64: {
+      type: String,
+      default: "",
+    },
+    photoMimeType: {
+      type: String,
+      default: "",
+    },
+    photoFileName: {
+      type: String,
+      default: "",
+    },
     status: {
       type: String,
       enum: ["not_resolved", "in_process", "resolved"],

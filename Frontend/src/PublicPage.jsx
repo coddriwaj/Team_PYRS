@@ -14,6 +14,8 @@ function PublicPage() {
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [submissionMode, setSubmissionMode] = useState('audio');
   const [locationInfo, setLocationInfo] = useState({
@@ -46,8 +48,9 @@ function PublicPage() {
 
   useEffect(() => () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
     streamRef.current?.getTracks().forEach((track) => track.stop());
-  }, [audioUrl]);
+  }, [audioUrl, photoPreviewUrl]);
 
   const detectLocation = () => {
     if (!navigator.geolocation) {
@@ -166,6 +169,52 @@ function PublicPage() {
       reader.readAsDataURL(blob);
     });
 
+  const buildPhotoPayload = async () => {
+    if (!photo) return {};
+
+    return {
+      photoBase64: await blobToBase64(photo),
+      photoMimeType: photo.type,
+      photoFileName: photo.name,
+    };
+  };
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    setError('');
+
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+
+    if (!file) {
+      setPhoto(null);
+      setPhotoPreviewUrl('');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setPhoto(null);
+      setPhotoPreviewUrl('');
+      setError('Please attach an image file.');
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      setPhoto(null);
+      setPhotoPreviewUrl('');
+      setError('Photo must be 4MB or smaller.');
+      return;
+    }
+
+    setPhoto(file);
+    setPhotoPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const clearPhoto = () => {
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    setPhoto(null);
+    setPhotoPreviewUrl('');
+  };
+
   const resetRecording = () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
@@ -190,6 +239,7 @@ function PublicPage() {
 
   const submitAudioComplaint = async () => {
     const audioBase64 = await blobToBase64(audioBlob);
+    const photoPayload = await buildPhotoPayload();
     const res = await fetch('/api/gemini/transcribe-classify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -199,15 +249,18 @@ function PublicPage() {
         touristName: user?.name || 'Anonymous',
         touristNationality: formData.touristNationality,
         location: locationInfo.value,
+        ...photoPayload,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Gemini audio processing failed.');
     resetRecording();
+    clearPhoto();
     return buildSubmissionMessage(data, 'Audio complaint processed and submitted successfully.');
   };
 
   const submitTextComplaint = async () => {
+    const photoPayload = await buildPhotoPayload();
     const res = await fetch('/api/gemini/classify-text', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -216,11 +269,13 @@ function PublicPage() {
         touristName: user?.name || 'Anonymous',
         touristNationality: formData.touristNationality,
         location: locationInfo.value,
+        ...photoPayload,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Gemini text classification failed.');
     setFormData((prev) => ({ ...prev, complaintText: '' }));
+    clearPhoto();
     return buildSubmissionMessage(data, 'Text complaint submitted successfully.');
   };
 
@@ -279,7 +334,7 @@ function PublicPage() {
           <p>Submit in any language. Gemini will translate, summarize, categorize, and route the complaint to officials.</p>
         </div>
 
-        <div className="public-grid public-grid-single">
+        <div className="public-grid">
           <div className="card">
             <div className="section-label">
               <p className="eyebrow">Complaint Input</p>
@@ -361,6 +416,27 @@ function PublicPage() {
               </div>
 
               <div className="field">
+                <label htmlFor="complaintPhoto">
+                  Attach Photo <span style={{ color: '#8A9099', fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input
+                  id="complaintPhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  disabled={processing}
+                />
+                {photoPreviewUrl && (
+                  <div className="photo-preview">
+                    <img src={photoPreviewUrl} alt="Attached complaint evidence preview" />
+                    <button type="button" className="action-btn" onClick={clearPhoto} disabled={processing}>
+                      Remove Photo
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="field">
                 <label>Location</label>
                 <div className={`location-panel ${locationInfo.status}`}>
                   <span>{locationInfo.display}</span>
@@ -368,19 +444,6 @@ function PublicPage() {
                     Retry
                   </button>
                 </div>
-              </div>
-
-              <div className="mini-map-card">
-                <GoogleComplaintMap
-                  markers={locationInfo.position ? [{
-                    id: 'current-location',
-                    title: 'Your current location',
-                    category: 'Complaint origin',
-                    criticalness: 'medium',
-                    position: locationInfo.position,
-                  }] : []}
-                  emptyMessage="Allow location permission to preview your complaint location."
-                />
               </div>
 
               <button
@@ -395,6 +458,25 @@ function PublicPage() {
 
             {error && <p className="alert alert-error" style={{ marginTop: '1rem' }}>{error}</p>}
             {message && <p className="success-note">{message}</p>}
+          </div>
+
+          <div className="card public-map-card">
+            <div className="section-label">
+              <p className="eyebrow">Detected Location</p>
+              <h3>Complaint location preview</h3>
+            </div>
+            <div className="mini-map-card">
+              <GoogleComplaintMap
+                markers={locationInfo.position ? [{
+                  id: 'current-location',
+                  title: 'Your current location',
+                  category: 'Complaint origin',
+                  criticalness: 'medium',
+                  position: locationInfo.position,
+                }] : []}
+                emptyMessage="Allow location permission to preview your complaint location."
+              />
+            </div>
           </div>
 
         </div>
